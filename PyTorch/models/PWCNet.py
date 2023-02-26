@@ -1,6 +1,8 @@
 """
 implementation of the PWC-DC network for optical flow estimation by Sun et al., 2018
 
+DC: dilated convolution, which is the main structure of context network, dc(flow)=refined flow
+
 Jinwei Gu and Zhile Ren
 
 """
@@ -16,13 +18,13 @@ sys.path.append("PyTorch/models")
 from models import correlation
 import numpy as np
 
-__all__ = [
+__all__ = [  # define interface of PWCNet
     'pwc_dc_net', 'pwc_dc_net_old'
 ]
 
 
 def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1,
-         dilation=1):  # components, each contains conv layer + leakyReLu
+         dilation=1):
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
                   padding=padding, dilation=dilation, bias=True),
@@ -41,19 +43,22 @@ def deconv(in_planes, out_planes, kernel_size=4, stride=2,
 class PWCDCNet(nn.Module):
     """
     PWC-DC net. add dilation convolution and densenet connections
-
+    
     """
 
-    def __init__(self, md=4):  # initiate fixed layer of feature extractor, warping layer and cost volume layers with fixed paras
+    def __init__(self, md=4):
         """
         input: md --- maximum displacement (for correlation. default: 4), after warpping
         md: search range(maybe can take it as stride) when computing cv
 
+        Initiate fixed settings of feature extractor, warpping layer and flow estimator,
+        the last two have no learnable paras
         """
+
         super(PWCDCNet, self).__init__()
 
-        # components of the feature pyramid extractor, 6 levels with LEARNABLE paras
-        # conv(input channels, output channels, kernel_size, stride), when stride==2 it's also a downsampling layer
+        # components of the feature pyramid extractor,
+        # 6 levels(not include the layer of input image) with LEARNABLE paras
         self.conv1a = conv(3, 16, kernel_size=3, stride=2)
         self.conv1aa = conv(16, 16, kernel_size=3, stride=1)
         self.conv1b = conv(16, 16, kernel_size=3, stride=1)
@@ -81,6 +86,7 @@ class PWCDCNet(nn.Module):
         nd = (2 * md + 1) ** 2  # 81
         dd = np.cumsum([128, 128, 96, 64, 32])  # array([128, 256, 352, 416, 448], dtype=int32)
 
+        # In the warpping layer, each level of the pyramid has different dimensions
         od = nd  # 81
         self.conv6_0 = conv(od, 128, kernel_size=3, stride=1)  # pyramid 6th
         self.conv6_1 = conv(od + dd[0], 128, kernel_size=3, stride=1)
@@ -271,6 +277,12 @@ class PWCDCNet(nn.Module):
             return flow2, flow3, flow4, flow5, flow6
         else:
             return flow2
+
+    def weight_parameters(self):
+        return [param for name, param in self.named_parameters() if 'weight' in name]
+
+    def bias_parameters(self):
+        return [param for name, param in self.named_parameters() if 'bias' in name]
 
 
 class PWCDCNet_old(nn.Module):
