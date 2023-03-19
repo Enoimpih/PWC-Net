@@ -7,7 +7,6 @@ import imageio.v3 as imageio
 import matplotlib.pyplot as plt
 import os
 import flow_vis
-import flow_visualization
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import models.PWCNet
@@ -42,6 +41,31 @@ def writeFlowFile(filename, uv):
         f.write(W.tobytes())  # width as an integer
         f.write(H.tobytes())  # height as an integer
         f.write(uv.tobytes())  # float values for u and v, W*H*2*4 bytes total
+
+
+def flow_to_rgb(filename):
+    def load_flow_to_numpy(path):
+        """
+        Copied from https://blog.csdn.net/qq_41503660/article/details/121593836
+        Licence and so on will be added once the project is finished
+
+        """
+        with open(path, 'rb') as f:
+            magic = np.fromfile(f, np.float32, count=1)
+            assert (202021.25 == magic), 'Magic number incorrect. Invalid .flo file'
+            h = np.fromfile(f, np.int32, count=1)[0]
+            w = np.fromfile(f, np.int32, count=1)[0]
+            data = np.fromfile(f, np.float32, count=2 * w * h)
+        data2D = np.resize(data, (w, h, 2))
+        return data2D
+
+    def load_numpy_to_rgb(np_flow):
+        img = flow_vis.flow_to_color(np_flow)
+        return img
+
+    flow = load_flow_to_numpy(filename)
+    img = load_numpy_to_rgb(flow)
+    return img
 
 
 im1_fn = './data/TEST_FULL_no_facula_10-OPPOK9X_NONE_NONE_OUTDOOR_NONE_2.tif'
@@ -99,7 +123,6 @@ v_ *= H / float(H_)
 flo = np.dstack((u_, v_))
 
 writeFlowFile(flow_fn, flo)  # store the generated flow in binary
-flow=flow_visualization.load_flow_to_numpy(flow_fn)
-img=flow_vis.flow_to_color(flow)
+img = flow_to_rgb(flow_fn)
 plt.imshow(img)
 plt.show()
