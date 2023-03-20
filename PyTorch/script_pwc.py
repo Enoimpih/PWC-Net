@@ -9,12 +9,26 @@ import os
 import flow_vis
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import models.PWCNet
 from models import *
 
 """
 Contact: Deqing Sun (deqings@nvidia.com); Zhile Ren (jrenzhile@gmail.com)
 """
+
+# para: directory to target video
+video_fn = './data/1.mp4'
+if len(sys.argv) > 1:
+    video_fn = sys.argv[1]
+
+root = './data'
+frame_saved_root = './data/frames/'
+flow_saved_root = './tmp/flow/'
+
+dirStr, ext = os.path.splitext(os.path.basename(video_fn))
+video_name = dirStr.split("\\")[-1]
+flow_fn = os.path.join(flow_saved_root, video_name + '.flo')
 
 
 def writeFlowFile(filename, uv):
@@ -68,19 +82,44 @@ def flow_to_rgb(filename):
     return img
 
 
-im1_fn = './data/TEST_FULL_no_facula_10-OPPOK9X_NONE_NONE_OUTDOOR_NONE_2.tif'
-im2_fn = './data/TEST_FULL_no_facula_11-OPPOK9X_NONE_NONE_OUTDOOR_NONE_2.tif'
-flow_fn = './tmp/TR_FULL_no_facula_10-11.flo'
+def video_to_frame(filename):
+    cam = cv2.VideoCapture(os.path.join(root, video_name + '.mp4'))
+    # frames
+    currentframe = 0
 
-# paras: directory to image pair and flow
-if len(sys.argv) > 1:
-    im1_fn = sys.argv[1]
-if len(sys.argv) > 2:
-    im2_fn = sys.argv[2]
-if len(sys.argv) > 3:
-    flow_fn = sys.argv[3]
+    while True:
+        # reading from frames
+        ret, frame = cam.read()
+
+        if ret:
+            # 如果视频仍然存在，继续创建图像
+            #
+            name = frame_saved_root + str(currentframe) + '-' + video_name + '.tif'
+            print('Creating...' + name)
+
+            # 写入提取的图像
+            cv2.imwrite(name, frame, ((int(cv2.IMWRITE_TIFF_RESUNIT), 2,
+                                       1,
+                                       int(cv2.IMWRITE_TIFF_XDPI), 100,
+                                       int(cv2.IMWRITE_TIFF_YDPI), 100)))
+            # 增加计数器，以便显示创建了多少帧
+            currentframe += 1
+            if currentframe >= 50:
+                break
+        else:
+            break
+
+    # 一旦完成释放所有的空间和窗口
+    cam.release()
+    cv2.destroyAllWindows()
+
+    im1_fn = frame_saved_root + str(22) + '-' + video_name + '.tif'
+    im2_fn = frame_saved_root + str(23) + '-' + video_name + '.tif'
+    return im1_fn, im2_fn
+
 
 pwc_model_fn = './pwc_net.pth.tar';  # path to the best model
+im1_fn, im2_fn = video_to_frame(video_fn)
 
 im_all = [imageio.imread(img) for img in [im1_fn, im2_fn]]
 im_all = [im[:, :, :3] for im in im_all]
@@ -107,7 +146,9 @@ with torch.no_grad():
     im_all = torch.autograd.Variable(torch.cat(im_all, 1).cuda())
 
 net = models.PWCNet.pwc_dc_net(pwc_model_fn)
-net = net.cuda()
+use_gpu = True
+DEVICE = torch.device('cuda:0') if use_gpu else torch.device('cpu')
+net.to(DEVICE)
 net.eval()
 
 flo = net(im_all)
